@@ -1,5 +1,6 @@
 grades.csv
 grades.html
+notifier.log
 venv/
 .venv/
 .env

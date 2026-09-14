@@ -2,7 +2,7 @@
 
 `dualis-notifier` prüft deine in Dualis veröffentlichten Modulnoten und sendet bei Änderungen eine Nachricht an einen Discord-Webhook.
 
-Die Noten werden lokal in `grades.csv` gespeichert. Bei jedem weiteren Lauf vergleicht das Script den neuen Stand mit dieser Datei und benachrichtigt dich nur bei Änderungen.
+Die Noten werden lokal in `grades.csv` gespeichert. Bei jedem weiteren Lauf vergleicht das Script die Module über ihre Dualis-Modulnummer und benachrichtigt dich nur über neue oder tatsächlich geänderte Noten.
 
 > Die Zugangsdaten liegen ausschließlich in deiner lokalen `.env`-Datei. Sie wird nicht in Git übernommen.
 
@@ -64,6 +64,15 @@ I: Created cache
 ```
 
 Das ist erwartetes Verhalten: Es wird lediglich `grades.csv` als Ausgangsstand angelegt. Es wird dabei noch keine Discord-Nachricht gesendet.
+
+### Verhalten bei verschwundenen Modulen
+
+Dualis kann Ergebnisse eines Moduls vorübergehend ausblenden und später erneut veröffentlichen. Das Script behält ein in einer Abfrage fehlendes Modul deshalb im Cache und markiert es nur mit einem internen Zeitstempel. Erscheint es danach mit unveränderten Daten erneut, wird **keine** doppelte Discord-Nachricht gesendet.
+
+Es gibt nur diese Benachrichtigungen:
+
+- **Neue Note**: ein bisher unbekanntes Modul erscheint nach dem ersten Lauf.
+- **Note geändert**: die gespeicherten Daten eines bekannten Moduls haben sich geändert.
 
 ## Automatisch prüfen
 
