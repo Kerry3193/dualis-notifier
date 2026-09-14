@@ -1,4 +1,6 @@
 grades.csv
 grades.html
 venv/
+.venv/
+.env
 __pycache__/

@@ -1,4 +1,12 @@
 import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+
+# Load local credentials when the notifier is run without Docker. Environment
+# variables supplied by Docker, systemd, or cron retain precedence.
+load_dotenv(Path(__file__).with_name(".env"))
 
 
 def load_config():

@@ -18,6 +18,19 @@ This is done using environment variables passed through docker.
 - ```DISCORD_WEBHOOK``` -> the webhook url to send the notifications to
 - ```AGENT_NAME``` -> user agent string included in the request (defaults to "Dualis Notifier")
 
+### Local setup without Docker
+
+Copy the template and enter your credentials. The `.env` file is loaded automatically
+when the script starts and is excluded from Git.
+
+```bash
+cp .env.example .env
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -r requirements.txt
+python dualis_notifier.py
+```
+
 ## semester_id
 - ```-N000000015088000``` -> WiSe 21/22
 - ```-N000000015098000``` -> SoSe 2022
