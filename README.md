@@ -17,7 +17,7 @@ Die Noten werden lokal in `grades.csv` gespeichert. Bei jedem weiteren Lauf verg
 Repository öffnen und virtuelle Python-Umgebung mit allen Abhängigkeiten einrichten:
 
 ```bash
-cd /root/dualis-notifier
+cd ~/dualis-notifier
 python3 -m venv .venv
 ./.venv/bin/python -m pip install -r requirements.txt
 ```
@@ -52,7 +52,7 @@ Die Datei wird beim Start automatisch geladen. Werte, die als normale Umgebungsv
 ## Erster Testlauf
 
 ```bash
-cd /root/dualis-notifier
+cd ~/dualis-notifier
 ./.venv/bin/python dualis_notifier.py
 ```
 
@@ -76,7 +76,7 @@ crontab -e
 Folgende Zeile einfügen:
 
 ```cron
-*/15 6-19 * * * cd /root/dualis-notifier && ./.venv/bin/python dualis_notifier.py >> /root/dualis-notifier/notifier.log 2>&1
+*/15 6-19 * * * cd "$HOME/dualis-notifier" && ./.venv/bin/python dualis_notifier.py >> "$HOME/dualis-notifier/notifier.log" 2>&1
 ```
 
 Den eingerichteten Zeitplan anzeigen:
@@ -88,7 +88,7 @@ crontab -l
 Live-Logs ansehen:
 
 ```bash
-tail -f /root/dualis-notifier/notifier.log
+tail -f ~/dualis-notifier/notifier.log
 ```
 
 ## Abgerufene Noten ansehen
@@ -96,7 +96,7 @@ tail -f /root/dualis-notifier/notifier.log
 Die gespeicherten Noten stehen in `grades.csv`:
 
 ```bash
-cd /root/dualis-notifier
+cd ~/dualis-notifier
 ./.venv/bin/python -c "import pandas as pd; print(pd.read_csv('grades.csv').to_string(index=False))"
 ```
 
