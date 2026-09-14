@@ -1,48 +1,132 @@
-![Docker Pulls](https://img.shields.io/docker/pulls/mfloto/dualis-notifier)
+# Dualis Notifier
 
-# dualis-notifier
-Sends a discord-notification when ever new grades are available on ```dualis.dhbw.de``` (module grades only). This script runs periodically via a cronjob (e.g. every 15 minutes), saving current grades as a .csv everytime they change. It is designed to be as simple and easy to understand as possible.
-It can be run directly or through the provided docker image (see usage below), which executes the script every 15 minutes.
+`dualis-notifier` prüft deine in Dualis veröffentlichten Modulnoten und sendet bei Änderungen eine Nachricht an einen Discord-Webhook.
 
-## usage
+Die Noten werden lokal in `grades.csv` gespeichert. Bei jedem weiteren Lauf vergleicht das Script den neuen Stand mit dieser Datei und benachrichtigt dich nur bei Änderungen.
+
+> Die Zugangsdaten liegen ausschließlich in deiner lokalen `.env`-Datei. Sie wird nicht in Git übernommen.
+
+## Voraussetzungen
+
+- Python 3.10 oder neuer
+- Ein Dualis-Benutzername, z. B. `s123456`
+- Ein Discord-Webhook für den gewünschten Kanal
+
+## Einrichtung ohne Docker
+
+Repository öffnen und virtuelle Python-Umgebung mit allen Abhängigkeiten einrichten:
+
 ```bash
-docker run -d -e DUALIS_USER="your_username" -e DUALIS_PASSWD="your_password" -e SEMESTER_ID="your_semester" -e DISCORD_WEBHOOK="your_webhook" mfloto/dualis-notifier:latest
+cd /root/dualis-notifier
+python3 -m venv .venv
+./.venv/bin/python -m pip install -r requirements.txt
 ```
 
-## configuration
-This is done using environment variables passed through docker.
-
-- ```DUALIS_USER``` -> your dualis username in the form of `sXXXXXX`
-- ```DUALIS_PASSWD``` -> your dualis password
-- ```SEMESTER_ID``` -> the semester_id of the semester you want to get the grades from (use the list below)
-- ```DISCORD_WEBHOOK``` -> the webhook url to send the notifications to
-- ```AGENT_NAME``` -> user agent string included in the request (defaults to "Dualis Notifier")
-
-### Local setup without Docker
-
-Copy the template and enter your credentials. The `.env` file is loaded automatically
-when the script starts and is excluded from Git.
+Dann die Konfigurationsvorlage kopieren:
 
 ```bash
 cp .env.example .env
-python3 -m venv .venv
-. .venv/bin/activate
-pip install -r requirements.txt
-python dualis_notifier.py
+chmod 600 .env
+nano .env
 ```
 
-## semester_id
-- ```-N000000015088000``` -> WiSe 21/22
-- ```-N000000015098000``` -> SoSe 2022
-- ```-N000000015108000``` -> WiSe 22/23
-- ```-N000000015118000``` -> SoSe 2023
-- ```-N000000015128000``` -> WiSe 23/24
-- ```-N000000015138000``` -> SoSe 2024
+Beispiel für den Inhalt von `.env`:
 
-## current deployment
-At the moment the script runs on a Standard B1s Azure-Instance.
+```env
+# Nur die s-Kennung eintragen, ohne @student.dhbw-mannheim.de
+DUALIS_USER=s123456
+DUALIS_PASSWD=dein-dualis-passwort
 
-## TODO
-- [x] containerize
-- [ ] aggregate data from multiple accounts (to cover retaken exams)
-- [ ] handle changed grades (apparently if the grade of a single person is changed, the dhbw unpublishes and republishes everyone’s grades for that module)
+# Leer lassen, um alle in der Dualis-Ansicht verfügbaren Ergebnisse abzurufen.
+SEMESTER_ID=
+
+# Webhook-URL aus den Discord-Kanal-Einstellungen
+DISCORD_WEBHOOK=https://discord.com/api/webhooks/WEBHOOK-ID/WEBHOOK-TOKEN
+
+# Optional
+AGENT_NAME=Dualis Notifier
+```
+
+Die Datei wird beim Start automatisch geladen. Werte, die als normale Umgebungsvariablen gesetzt wurden, haben Vorrang – dadurch bleibt Docker ebenfalls unterstützt.
+
+## Erster Testlauf
+
+```bash
+cd /root/dualis-notifier
+./.venv/bin/python dualis_notifier.py
+```
+
+Beim ersten erfolgreichen Lauf erscheinen diese Meldungen:
+
+```text
+W: No cache found
+I: Created cache
+```
+
+Das ist erwartetes Verhalten: Es wird lediglich `grades.csv` als Ausgangsstand angelegt. Es wird dabei noch keine Discord-Nachricht gesendet.
+
+## Automatisch prüfen
+
+Für eine Prüfung alle 15 Minuten von 06:00 bis 19:45 Uhr täglich, diese Crontab einrichten:
+
+```bash
+crontab -e
+```
+
+Folgende Zeile einfügen:
+
+```cron
+*/15 6-19 * * * cd /root/dualis-notifier && ./.venv/bin/python dualis_notifier.py >> /root/dualis-notifier/notifier.log 2>&1
+```
+
+Den eingerichteten Zeitplan anzeigen:
+
+```bash
+crontab -l
+```
+
+Live-Logs ansehen:
+
+```bash
+tail -f /root/dualis-notifier/notifier.log
+```
+
+## Abgerufene Noten ansehen
+
+Die gespeicherten Noten stehen in `grades.csv`:
+
+```bash
+cd /root/dualis-notifier
+./.venv/bin/python -c "import pandas as pd; print(pd.read_csv('grades.csv').to_string(index=False))"
+```
+
+## Semester-ID
+
+Normalerweise kann `SEMESTER_ID` leer bleiben. Das Script ruft dann die Ergebnisse ab, die Dualis ohne Semestereinschränkung bereitstellt.
+
+Wenn du auf ein bestimmtes Semester einschränken möchtest, übergib dessen Dualis-ID:
+
+```env
+SEMESTER_ID=-N000000015178000
+```
+
+Die ID steht – falls Dualis sie übergibt – in der Adresse einer Ergebnisseite direkt nach `-N000307,`.
+
+## Docker (optional)
+
+Das Projekt lässt sich auch als Container ausführen. Im Projektordner bauen und starten:
+
+```bash
+docker build -t dualis-notifier .
+docker run -d --name dualis-notifier --restart unless-stopped \
+  --env-file .env \
+  dualis-notifier
+```
+
+Der Container prüft ebenfalls alle 15 Minuten.
+
+## Sicherheit
+
+- Teile weder deine Dualis-Zugangsdaten noch Discord-Webhook-URLs.
+- Gib keine Dualis-URLs mit `ARGUMENTS=-N…` weiter; sie können eine temporäre Sitzungskennung enthalten.
+- Die lokale `.env` ist per `.gitignore` vom Commit ausgeschlossen. Prüfe vor einem Commit trotzdem immer `git status`.
