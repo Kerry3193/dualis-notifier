@@ -2,6 +2,7 @@ import pandas as pd
 import requests
 import re
 import os
+from io import StringIO
 
 from config import load_config
 
@@ -46,7 +47,7 @@ def get_grades(cookie, session, semester_id) -> str:
 
 
 def extract_data_from_html(raw_html) -> pd.DataFrame:
-    tables = pd.read_html(raw_html)
+    tables = pd.read_html(StringIO(raw_html))
     df = tables[0]
     df.drop(
         df.columns[df.columns.str.contains("unnamed", case=False)], axis=1, inplace=True
