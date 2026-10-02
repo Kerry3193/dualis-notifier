@@ -1,7 +1,9 @@
-grades.csv
-grades.html
-notifier.log
+/grades.csv
+/grades.html
+/notifier.log
 venv/
 .venv/
 .env
 __pycache__/
+data/
+.bug-hunter/

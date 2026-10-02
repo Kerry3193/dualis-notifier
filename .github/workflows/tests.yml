@@ -1,0 +1,42 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.10", "3.12", "3.14"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - run: python -m pip install --require-hashes -r requirements.txt
+      - run: python -m pip check
+      - run: python -m unittest discover -s test -v
+      - run: python -m compileall -q .
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - run: docker build -t dualis-notifier:test .
+      - name: Verify non-root state persistence across containers
+        run: |
+          docker volume create notifier-test-data
+          docker run --rm -v notifier-test-data:/data --entrypoint python dualis-notifier:test -c 'import os; from pathlib import Path; import pandas as pd; from storage import StateStore; assert os.geteuid() != 0; s = StateStore(Path("/data"), "s123456", ""); s.save(pd.DataFrame([{"Name": "Synthetic", "Endnote": "1,7"}]), [{"id": "one", "name": "Synthetic", "type": "new", "attempts": 0, "next_attempt_at": 0}])'
+          docker run --rm --read-only -v notifier-test-data:/data --entrypoint python dualis-notifier:test -c 'from pathlib import Path; from storage import StateStore; s = StateStore(Path("/data"), "s123456", ""); grades, pending = s.load(); assert grades.iloc[0]["Endnote"] == "1,7"; assert len(pending) == 1'
+          docker run --rm -e DUALIS_USER=s123456 -e DUALIS_PASSWD=synthetic -e DISCORD_WEBHOOK=https://discord.com/api/webhooks/123/synthetic -v notifier-test-data:/data dualis-notifier:test --status
+          docker volume rm notifier-test-data
