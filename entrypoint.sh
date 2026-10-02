@@ -1,5 +1,3 @@
 #!/bin/sh
-echo "Starting notifier..."
-
-printenv | grep -v "no_proxy" >> /etc/environment
-cron -f
+set -eu
+exec /usr/local/bin/python3 -u /notifier/dualis_notifier.py "$@"

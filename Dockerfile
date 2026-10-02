@@ -1,15 +1,17 @@
 FROM python:3.12-slim-bookworm
 WORKDIR /notifier
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 DATA_DIR=/data
 
-COPY dualis_notifier.py config.py requirements.txt entrypoint.sh /notifier/
+COPY requirements.txt /notifier/
+RUN pip install --no-cache-dir --require-hashes -r requirements.txt
+
+RUN groupadd --gid 10001 notifier \
+    && useradd --uid 10001 --gid notifier --no-create-home notifier \
+    && mkdir /data && chown notifier:notifier /data
+
+COPY *.py entrypoint.sh /notifier/
 RUN chmod 0755 /notifier/entrypoint.sh
-
-RUN pip install --no-cache-dir --compile -r requirements.txt
-
-RUN apt update
-# Upgrade all packages until a more minimal base image is used
-RUN apt upgrade -y
-RUN apt install cron -y
-
-RUN echo "*/15 * * * * /usr/local/bin/python3 /notifier/dualis_notifier.py >> /var/log/cron.log 2>&1" | crontab -
-CMD ["/notifier/entrypoint.sh"]
+USER notifier
+VOLUME ["/data"]
+ENTRYPOINT ["/notifier/entrypoint.sh"]
+CMD ["--watch"]
