@@ -1,0 +1,17 @@
+services:
+  notifier:
+    build: .
+    restart: unless-stopped
+    init: true
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+    volumes:
+      - notifier-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    stop_grace_period: 2m
+
+volumes:
+  notifier-data:

@@ -1,0 +1,16 @@
+.git
+.github
+.bug-hunter
+.env
+.env.*
+!.env.example
+.venv
+venv
+__pycache__
+**/__pycache__
+*.pyc
+data
+*.csv
+*.html
+*.log
+test

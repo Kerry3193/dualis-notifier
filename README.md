@@ -1,141 +1,160 @@
 # Dualis Notifier
 
-`dualis-notifier` prüft deine in Dualis veröffentlichten Modulnoten und sendet bei Änderungen eine Nachricht an einen Discord-Webhook.
+Der Notifier prüft in Dualis veröffentlichte Modulnoten und sendet neue oder geänderte Ergebnisse an einen Discord-Webhook. Er nutzt den Login für `@student.dhbw-mannheim.de`.
 
-Die Noten werden lokal in `grades.csv` gespeichert. Bei jedem weiteren Lauf vergleicht das Script die Module über ihre Dualis-Modulnummer und benachrichtigt dich nur über neue oder tatsächlich geänderte Noten.
-
-> Die Zugangsdaten liegen ausschließlich in deiner lokalen `.env`-Datei. Sie wird nicht in Git übernommen.
-
-## Voraussetzungen
-
-- Python 3.10 oder neuer
-- Ein Dualis-Benutzername, z. B. `s123456`
-- Ein Discord-Webhook für den gewünschten Kanal
+Notenstand und ausstehende Nachrichten werden gemeinsam gespeichert. Bei einem fehlgeschlagenen Versand bleibt die Nachricht erhalten und wird in einem späteren Lauf erneut versucht. Der erste erfolgreiche Abruf legt nur einen Ausgangsstand an und versendet keine vorhandenen Noten.
 
 ## Einrichtung ohne Docker
 
-Repository öffnen und virtuelle Python-Umgebung mit allen Abhängigkeiten einrichten:
+Voraussetzung: Python 3.10 oder neuer. Python 3.10, 3.12 und 3.14 werden in CI geprüft.
 
 ```bash
-cd ~/dualis-notifier
+git clone https://github.com/Kerry3193/dualis-notifier.git
+cd dualis-notifier
 python3 -m venv .venv
-./.venv/bin/python -m pip install -r requirements.txt
-```
-
-Dann die Konfigurationsvorlage kopieren:
-
-```bash
+./.venv/bin/python -m pip install --require-hashes -r requirements.txt
 cp .env.example .env
 chmod 600 .env
 nano .env
 ```
 
-Beispiel für den Inhalt von `.env`:
+Die drei Pflichtwerte in `.env` ausfüllen:
 
 ```env
-# Nur die s-Kennung eintragen, ohne @student.dhbw-mannheim.de
 DUALIS_USER=s123456
-DUALIS_PASSWD=dein-dualis-passwort
-
-# Leer lassen, um alle in der Dualis-Ansicht verfügbaren Ergebnisse abzurufen.
-SEMESTER_ID=
-
-# Webhook-URL aus den Discord-Kanal-Einstellungen
+DUALIS_PASSWD='dein-passwort'
 DISCORD_WEBHOOK=https://discord.com/api/webhooks/WEBHOOK-ID/WEBHOOK-TOKEN
-
-# Optional
-AGENT_NAME=Dualis Notifier
+SEMESTER_ID=
 ```
 
-Die Datei wird beim Start automatisch geladen. Werte, die als normale Umgebungsvariablen gesetzt wurden, haben Vorrang – dadurch bleibt Docker ebenfalls unterstützt.
+Nur die Benutzerkennung ohne Domain eintragen. Passwörter werden unverändert übertragen; Formularkodierung übernimmt Requests. Für Passwörter mit Leerzeichen oder `#` den Wert in Anführungszeichen setzen und eingebettete Anführungszeichen nach der dotenv-Syntax schreiben. `${...}` wird als wörtlicher Passwortbestandteil behandelt. Bestehende Umgebungsvariablen haben Vorrang vor `.env`.
 
-## Erster Testlauf
+Die Webhook-URL muss eine Discord-HTTPS-URL mit numerischer Webhook-ID sein. Ein optionales `thread_id` bleibt erhalten; der Notifier setzt `wait=true` zur Versandbestätigung.
+
+Einmal prüfen:
 
 ```bash
-cd ~/dualis-notifier
 ./.venv/bin/python dualis_notifier.py
 ```
 
-Beim ersten erfolgreichen Lauf erscheinen diese Meldungen:
-
-```text
-W: No cache found
-I: Created cache
-```
-
-Das ist erwartetes Verhalten: Es wird lediglich `grades.csv` als Ausgangsstand angelegt. Es wird dabei noch keine Discord-Nachricht gesendet.
-
-### Verhalten bei verschwundenen Modulen
-
-Dualis kann Ergebnisse eines Moduls vorübergehend ausblenden und später erneut veröffentlichen. Das Script behält ein in einer Abfrage fehlendes Modul deshalb im Cache und markiert es nur mit einem internen Zeitstempel. Erscheint es danach mit unveränderten Daten erneut, wird **keine** doppelte Discord-Nachricht gesendet.
-
-Es gibt nur diese Benachrichtigungen:
-
-- **Neue Note**: ein bisher unbekanntes Modul erscheint nach dem ersten Lauf.
-- **Note geändert**: die gespeicherten Daten eines bekannten Moduls haben sich geändert.
+Beim ersten Abruf erscheint „Ausgangsstand angelegt“. Fehlende Konfiguration wird vor einem Netzwerkaufruf gemeldet. Die Exit-Codes sind `0` für eine erfolgreiche Prüfung beziehungsweise eine übersprungene parallele Prüfung, `1` bei Abruf-/Speicher-/Versandfehlern oder ausstehenden Nachrichten und `2` bei ungültiger Konfiguration.
 
 ## Automatisch prüfen
 
-Für eine Prüfung alle 15 Minuten von 06:00 bis 19:45 Uhr täglich, diese Crontab einrichten:
+Ein fortlaufender Prozess prüft sofort und anschließend standardmäßig 900 Sekunden nach Abschluss des vorherigen Laufs:
 
 ```bash
-crontab -e
+./.venv/bin/python -u dualis_notifier.py --watch
 ```
 
-Folgende Zeile einfügen:
+Alternativ eine Crontab für Prüfungen alle 15 Minuten von 06:00 bis 19:45 Uhr einrichten:
 
 ```cron
 */15 6-19 * * * cd "$HOME/dualis-notifier" && ./.venv/bin/python dualis_notifier.py >> "$HOME/dualis-notifier/notifier.log" 2>&1
 ```
 
-Den eingerichteten Zeitplan anzeigen:
+Den Pfad an die eigene Installation anpassen. Die Prozesssperre verhindert, dass Cron und ein bereits laufender Prozess gleichzeitig denselben Zustand verändern. Der fortlaufende Prozess verarbeitet SIGTERM und SIGINT und beendet sich nach dem aktuellen Lauf.
+
+## Daten und Benachrichtigungen
 
 ```bash
-crontab -l
+./.venv/bin/python dualis_notifier.py --status
 ```
 
-Live-Logs ansehen:
+Der Befehl zeigt den Pfad zur CSV-Datei, zur Zustandsdatei und die Anzahl ausstehender Nachrichten. Er verwendet keine Netzwerkverbindung.
+
+Standardmäßig liegen die Daten unter `data/<konto-und-semester-kennung>/` im Projektverzeichnis. Ein relativer `DATA_DIR` wird gegen das Projektverzeichnis aufgelöst und hängt nicht vom Arbeitsverzeichnis eines Cron-Jobs ab. Verschiedene Konten und Semester erhalten getrennte Zustände.
+
+- `state.json`: maßgeblicher Notenstand mit ausstehenden Nachrichten; atomar ersetzt und auf POSIX-Systemen mit Dateirechten `600` angelegt.
+- `grades.csv`: ebenfalls atomar geschriebener Export zum Ansehen. Änderungen an dieser Datei ändern den maßgeblichen Zustand nicht.
+- `notifier.lock`: Betriebssystem-Prozesssperre; sie wird bei Prozessende automatisch freigegeben. Die Datei bleibt bestehen und darf während eines Laufs nicht entfernt werden.
+
+Fehlende Module bleiben gespeichert. Erscheinen sie unverändert wieder, entsteht keine doppelte Nachricht. Module werden anhand ihrer Nummer zugeordnet; ein eindeutiger Name dient bei fehlender Nummer als Ersatz. Gleiche Namen mit verschiedenen Modulnummern bleiben getrennt.
+
+Die HTML-Auswertung wählt genau eine Tabelle mit den Spalten `Name` und `Endnote`. Unlesbare Seiten, fehlende Pflichtspalten und mehrdeutige Tabellen werden abgelehnt, bevor der Notenstand aktualisiert wird. Dezimalkommas bleiben erhalten. Änderungen an Name, Endnote, Credits oder Status lösen Meldungen aus; eine reine numerische Formatänderung nicht. Vorübergehend fehlende optionale Spalten behalten ihren bisherigen Wert.
+
+Pro ausstehender Nachricht gibt es höchstens einen Versandversuch je Lauf. Beim ersten Fehler wird die Versandserie abgebrochen. Die nächste frühestmögliche Wiederholung erfolgt nach einer wachsenden Wartezeit von einer Minute bis zu einer Stunde; die tatsächliche Prüfung erfolgt im eingerichteten Intervall. Bei HTTP 429 wird mindestens die von Discord vorgegebene Wartezeit eingehalten. Ausstehende Nachrichten werden auch dann versucht, wenn der anschließende Dualis-Abruf fehlschlägt.
+
+Nach einer Discord-Bestätigung wird jede Nachricht einzeln quittiert. Hat Discord eine Nachricht angenommen, aber ihre Antwort geht verloren oder der Prozess endet vor der Speicherung der Quittung, kann bei der Wiederholung eine doppelte Nachricht entstehen. Die Zustellung garantiert deshalb keine exakt einmalige Veröffentlichung.
+
+## Bisherigen CSV-Cache übernehmen
+
+Vor dem ersten Lauf der neuen Version kann der bisherige Cache ausdrücklich importiert werden:
 
 ```bash
-tail -f ~/dualis-notifier/notifier.log
+./.venv/bin/python dualis_notifier.py --import-cache grades.csv
 ```
 
-## Abgerufene Noten ansehen
+Die Quelldatei bleibt erhalten. Ein Import wird abgelehnt, wenn für das konfigurierte Konto/Semester bereits ein Zustand existiert. Ohne Import legt der erste Abruf einen neuen Ausgangsstand an. Vor einem Update das gesamte Datenverzeichnis sichern; bei einem Downgrade gehen ausstehende Nachrichten nicht in das alte CSV-Format über.
 
-Die gespeicherten Noten stehen in `grades.csv`:
+## Konfiguration
+
+| Variable | Standard / Bedeutung |
+|---|---|
+| `DUALIS_USER` | Pflicht: Benutzerkennung ohne Domain |
+| `DUALIS_PASSWD` | Pflicht: Passwort |
+| `DISCORD_WEBHOOK` | Pflicht: Discord-Webhook-URL |
+| `SEMESTER_ID` | Leer: Ergebnisse ohne Semestereinschränkung; sonst beispielsweise `-N000000015178000` |
+| `DATA_DIR` | `data`, im Docker-Container `/data` |
+| `AGENT_NAME` | `Dualis Notifier` |
+| `CONNECT_TIMEOUT` | `5` Sekunden Verbindungszeitlimit |
+| `READ_TIMEOUT` | `30` Sekunden Wartezeit auf weitere Antwortdaten |
+| `CHECK_INTERVAL` | `900` Sekunden zwischen abgeschlossenen Läufen mit `--watch` |
+
+Die Semester-ID steht in der URL einer Ergebnisseite gegebenenfalls nach `-N000307,`. Ein Lesezeitlimit ist kein Zeitlimit für den gesamten Download. Sitzungs-URLs mit `ARGUMENTS=-N…` nicht teilen.
+
+## Docker
+
+Mit ausgefüllter `.env` starten:
 
 ```bash
-cd ~/dualis-notifier
-./.venv/bin/python -c "import pandas as pd; print(pd.read_csv('grades.csv').to_string(index=False))"
+docker compose up -d --build
+docker compose logs -f notifier
+docker compose exec notifier python dualis_notifier.py --status
 ```
 
-## Semester-ID
+Der Prozess läuft als Benutzer ohne Root-Rechte, prüft beim Start sofort und schreibt Logs nach stdout/stderr. Das benannte Volume `notifier-data` speichert den Zustand über Container-Neuerstellungen hinweg. `docker compose down` behält es; `docker compose down -v` entfernt die gespeicherten Daten.
 
-Normalerweise kann `SEMESTER_ID` leer bleiben. Das Script ruft dann die Ergebnisse ab, die Dualis ohne Semestereinschränkung bereitstellt.
-
-Wenn du auf ein bestimmtes Semester einschränken möchtest, übergib dessen Dualis-ID:
-
-```env
-SEMESTER_ID=-N000000015178000
-```
-
-Die ID steht – falls Dualis sie übergibt – in der Adresse einer Ergebnisseite direkt nach `-N000307,`.
-
-## Docker (optional)
-
-Das Projekt lässt sich auch als Container ausführen. Im Projektordner bauen und starten:
+Alternativ ohne Compose:
 
 ```bash
 docker build -t dualis-notifier .
 docker run -d --name dualis-notifier --restart unless-stopped \
-  --env-file .env \
+  --env-file .env -e DATA_DIR=/data \
+  -v dualis-notifier-data:/data \
   dualis-notifier
 ```
 
-Der Container prüft ebenfalls alle 15 Minuten.
+Für einen bestehenden Cache den Pfad vor dem ersten Abruf einbinden und importieren, zum Beispiel mit Compose:
 
-## Sicherheit
+```bash
+docker compose run --rm -v "$PWD/grades.csv:/legacy-grades.csv:ro" notifier --import-cache /legacy-grades.csv
+docker compose up -d
+```
 
-- Teile weder deine Dualis-Zugangsdaten noch Discord-Webhook-URLs.
-- Gib keine Dualis-URLs mit `ARGUMENTS=-N…` weiter; sie können eine temporäre Sitzungskennung enthalten.
-- Die lokale `.env` ist per `.gitignore` vom Commit ausgeschlossen. Prüfe vor einem Commit trotzdem immer `git status`.
+Ein Bind-Mount statt eines benannten Volumes muss für UID/GID `10001` schreibbar sein. `.env`, lokale Noten, Logs und Tests werden nicht in das Docker-Image kopiert. Zugangsdaten werden nicht in `/etc/environment` geschrieben.
+
+## Tests und Wartung
+
+```bash
+./.venv/bin/python -m unittest discover -s test -v
+./.venv/bin/python -m pip check
+```
+
+Die Tests verwenden synthetische HTML-Daten und simulierte HTTP-Antworten. Sie benötigen weder Dualis-Zugangsdaten noch einen echten Discord-Kanal. Die CI prüft Python 3.10, 3.12 und 3.14 sowie Docker-Build, Ausführung ohne Root-Rechte und Datenpersistenz zwischen zwei Containern.
+
+`requirements.in` enthält direkte Abhängigkeiten. `requirements.txt` sperrt auch indirekte Abhängigkeiten mit Versionsnummern und SHA-256-Prüfsummen. Zum Aktualisieren mit installiertem uv:
+
+```bash
+uv pip compile --universal --python-version 3.10 --generate-hashes requirements.in -o requirements.txt
+./.venv/bin/python -m pip install --require-hashes -r requirements.txt
+./.venv/bin/python -m unittest discover -s test -v
+```
+
+Dependabot schlägt regelmäßige Änderungen an Python-Paketen, GitHub Actions und dem Docker-Basisimage vor. Änderungen erst nach Prüfung der Release Notes und Tests übernehmen.
+
+## Sicherheit und Fehlerbehandlung
+
+Passwort und Webhook-URL gehören ausschließlich in `.env` oder die Laufzeitumgebung. `.env`, `data/` und lokale Exporte werden von Git ignoriert. Der Notifier schreibt keine rohe Dualis-HTML-Seite auf die Festplatte und protokolliert keine geheimen URLs oder Requests-Ausnahmetexte. Beschädigte Zustandsdateien werden gemeldet und nicht durch einen leeren Ausgangsstand ersetzt.
+
+Für einen produktiven Test müssen die aktuelle Dualis-Anmeldung und eine echte Discord-Zustellung mit den eigenen Zugangsdaten geprüft werden. Die synthetischen Tests beweisen diese externen Vertragsdetails nicht.
